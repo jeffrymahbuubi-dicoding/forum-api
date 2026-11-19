@@ -2,6 +2,7 @@ import { vi } from 'vitest';
 import ThreadRepository from '../../../Domains/threads/ThreadRepository.js';
 import CommentRepository from '../../../Domains/comments/CommentRepository.js';
 import ReplyRepository from '../../../Domains/replies/ReplyRepository.js';
+import LikeRepository from '../../../Domains/likes/LikeRepository.js';
 import GetThreadDetailUseCase from '../GetThreadDetailUseCase.js';
 
 describe('GetThreadDetailUseCase', () => {
@@ -10,6 +11,7 @@ describe('GetThreadDetailUseCase', () => {
     const mockThreadRepository = new ThreadRepository();
     const mockCommentRepository = new CommentRepository();
     const mockReplyRepository = new ReplyRepository();
+    const mockLikeRepository = new LikeRepository();
 
     mockThreadRepository.getThreadById = vi.fn()
       .mockImplementation(() => Promise.resolve({
@@ -55,11 +57,16 @@ describe('GetThreadDetailUseCase', () => {
           isDelete: false,
         },
       ]));
+    mockLikeRepository.getLikeCountsByThreadId = vi.fn()
+      .mockImplementation(() => Promise.resolve([
+        { commentId: 'comment-111', likeCount: 2 },
+      ]));
 
     const getThreadDetailUseCase = new GetThreadDetailUseCase({
       threadRepository: mockThreadRepository,
       commentRepository: mockCommentRepository,
       replyRepository: mockReplyRepository,
+      likeRepository: mockLikeRepository,
     });
 
     // Action
@@ -92,6 +99,7 @@ describe('GetThreadDetailUseCase', () => {
             },
           ],
           content: 'sebuah comment',
+          likeCount: 2,
         },
         {
           id: 'comment-222',
@@ -99,11 +107,13 @@ describe('GetThreadDetailUseCase', () => {
           date: '2021-08-08T07:26:21.338Z',
           replies: [],
           content: '**komentar telah dihapus**',
+          likeCount: 0,
         },
       ],
     });
     expect(mockThreadRepository.getThreadById).toHaveBeenCalledWith('thread-123');
     expect(mockCommentRepository.getCommentsByThreadId).toHaveBeenCalledWith('thread-123');
     expect(mockReplyRepository.getRepliesByThreadId).toHaveBeenCalledWith('thread-123');
+    expect(mockLikeRepository.getLikeCountsByThreadId).toHaveBeenCalledWith('thread-123');
   });
 });
