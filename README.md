@@ -1,18 +1,23 @@
-# Forum API V1
+# Forum API V2
 
 REST API untuk forum diskusi, dibangun dengan Node.js, Express, dan PostgreSQL menggunakan Clean Architecture.
 Proyek ini dikembangkan dari starter project kelas (registrasi pengguna, login, refresh token, dan logout), lalu
-ditambah fitur thread, komentar, dan balasan komentar.
+ditambah fitur thread, komentar, balasan komentar, dan menyukai komentar. Pada versi kedua ini API dilengkapi
+Continuous Integration dan Continuous Deployment dengan GitHub Actions, pembatasan akses dengan NGINX, dan
+akses melalui HTTPS.
 
 ## Fitur
 
 - Registrasi pengguna, login, refresh token, dan logout.
 - Menambahkan thread (perlu autentikasi).
-- Melihat detail thread beserta komentar dan balasannya (tanpa autentikasi).
+- Melihat detail thread beserta komentar dan balasannya (tanpa autentikasi). Setiap komentar menampilkan jumlah
+  suka (`likeCount`).
 - Menambahkan dan menghapus komentar pada thread (hapus bersifat soft delete; isi komentar yang dihapus
   ditampilkan sebagai `**komentar telah dihapus**`).
 - Menambahkan dan menghapus balasan pada komentar (soft delete; isi balasan yang dihapus ditampilkan sebagai
   `**balasan telah dihapus**`).
+- Menyukai dan membatalkan suka pada komentar melalui satu route yang sama. Bila pengguna belum menyukai komentar,
+  aksinya adalah menyukai; bila sudah, aksinya adalah membatalkan suka.
 - Hanya pemilik komentar atau balasan yang dapat menghapusnya.
 
 ## Struktur
@@ -20,12 +25,14 @@ ditambah fitur thread, komentar, dan balasan komentar.
 ```
 src/
   Commons/           exception, konfigurasi, utilitas
-  Domains/           entities dan interface repository per bagian (users, authentications, threads, comments, replies)
+  Domains/           entities dan interface repository per bagian (users, authentications, threads, comments, replies, likes)
   Applications/      use case dan interface layanan (security)
   Infrastructures/   repository PostgreSQL, JWT, bcrypt, container, server Express
   Interfaces/        routes dan handler HTTP, middleware autentikasi
 migrations/          migrasi database (node-pg-migrate)
 tests/               helper tabel untuk pengujian
+.github/workflows/   ci.yml dan cd.yml (GitHub Actions)
+nginx.conf           konfigurasi NGINX (reverse proxy, limit access, HTTPS)
 ```
 
 ## Kebutuhan
@@ -63,7 +70,7 @@ tests/               helper tabel untuk pengujian
 
    Catatan: nama variabel masa berlaku token yang dibaca kode adalah `ACCESS_TOKEN_AGE` (starter project menulisnya
    `ACCCESS_TOKEN_AGE` dengan tiga huruf C; nama itu tidak dibaca oleh kode). Port `5000` dipakai oleh Postman
-   Collection Forum API V1 (`localhost:5000`).
+   Collection Forum API (`localhost:5000`).
 
 5. Jalankan migrasi pada kedua database:
 
@@ -93,9 +100,10 @@ tests/               helper tabel untuk pengujian
 | PUT | `/authentications` | tidak | memperbarui access token | 200 |
 | DELETE | `/authentications` | tidak | logout | 200 |
 | POST | `/threads` | ya | menambahkan thread (`title`, `body`) | 201 `addedThread` |
-| GET | `/threads/{threadId}` | tidak | detail thread, komentar, dan balasan | 200 `thread` |
+| GET | `/threads/{threadId}` | tidak | detail thread, komentar (dengan `likeCount`), dan balasan | 200 `thread` |
 | POST | `/threads/{threadId}/comments` | ya | menambahkan komentar (`content`) | 201 `addedComment` |
 | DELETE | `/threads/{threadId}/comments/{commentId}` | ya | menghapus komentar | 200 |
+| PUT | `/threads/{threadId}/comments/{commentId}/likes` | ya | menyukai atau membatalkan suka pada komentar (tanpa body) | 200 `{ "status": "success" }` |
 | POST | `/threads/{threadId}/comments/{commentId}/replies` | ya | menambahkan balasan (`content`) | 201 `addedReply` |
 | DELETE | `/threads/{threadId}/comments/{commentId}/replies/{replyId}` | ya | menghapus balasan | 200 |
 
@@ -103,3 +111,39 @@ Endpoint yang memerlukan autentikasi membaca header `Authorization: Bearer <acce
 menjawab 401. Kegagalan lain: 400 untuk payload yang tidak lengkap atau bertipe salah, 403 bila pengguna bukan
 pemilik komentar atau balasan, dan 404 bila thread, komentar, atau balasan tidak ditemukan. Semua respons gagal
 berbentuk `{ "status": "fail", "message": "..." }`.
+
+Setiap komentar pada detail thread memiliki `likeCount` berupa angka (0 bila belum ada yang menyukai).
+
+## CI/CD
+
+Alur kerja GitHub Actions berada di folder `.github/workflows/`.
+
+- `ci.yml` (Continuous Integration) berjalan pada event pull request ke branch `main`. Job-nya memakai Node.js 22
+  dan service container PostgreSQL, lalu menjalankan `npm ci`, `npm run migrate up`, `npm run lint`, dan `npm test`
+  (unit test, integration test, dan functional test). Nilai database dan kunci token di workflow ini hanya
+  nilai sementara yang berlaku selama job berjalan.
+- `cd.yml` (Continuous Deployment) berjalan pada event push ke branch `main`. Workflow ini masuk ke server lewat
+  SSH (`appleboy/ssh-action`), lalu menjalankan `git pull`, `npm ci --omit=dev`, `npm run migrate up`, dan
+  `pm2 restart`. Data koneksi disimpan sebagai repository secrets: `SSH_HOST`, `SSH_USERNAME`, `SSH_KEY`, dan
+  `SSH_PORT`.
+
+Karena `npm run migrate up` dijalankan di server dengan `npm ci --omit=dev`, paket `node-pg-migrate` berada di
+`dependencies`, bukan `devDependencies`.
+
+## Keamanan
+
+Berkas `nginx.conf` di root proyek adalah konfigurasi NGINX yang dipakai server. NGINX berjalan sebagai reverse
+proxy di depan aplikasi (port 5000), sehingga hanya port 80 dan 443 yang dibuka ke luar.
+
+- Limit access: resource `/threads` dan semua path di bawahnya dibatasi 90 permintaan per menit untuk setiap
+  alamat IP. Zona pembatas dibuat dengan `limit_req_zone $binary_remote_addr zone=threads:10m rate=90r/m;`
+  dan dipasang pada `location /threads` dengan `limit_req`. Path lain tidak dibatasi.
+  - `rate=90r/m` berarti rata-rata 90 permintaan per menit, atau satu permintaan setiap sekitar 0,67 detik.
+  - `burst=89` menyediakan antrean 89 permintaan di atas satu permintaan yang sedang dilayani, sehingga
+    sekumpulan 90 permintaan yang datang berurutan tetap dilayani. Tanpa `burst`, permintaan kedua yang tiba
+    dalam jeda 0,67 detik langsung ditolak.
+  - `nodelay` membuat permintaan dalam batas `burst` dilayani saat itu juga, tidak ditahan agar sesuai
+    kecepatan `rate`. Permintaan di atas batas itu ditolak dengan status 503, lalu kuota terisi kembali
+    90 permintaan per menit.
+- HTTPS: sertifikat diterbitkan oleh Let's Encrypt melalui certbot, dan permintaan HTTP dialihkan ke HTTPS
+  sehingga lalu lintas tidak dapat disadap di jalan (serangan MITM).

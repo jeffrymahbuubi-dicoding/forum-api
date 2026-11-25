@@ -4,6 +4,7 @@ import UsersTableTestHelper from '../../../../tests/UsersTableTestHelper.js';
 import ThreadsTableTestHelper from '../../../../tests/ThreadsTableTestHelper.js';
 import CommentsTableTestHelper from '../../../../tests/CommentsTableTestHelper.js';
 import RepliesTableTestHelper from '../../../../tests/RepliesTableTestHelper.js';
+import CommentLikesTableTestHelper from '../../../../tests/CommentLikesTableTestHelper.js';
 import ServerTestHelper from '../../../../tests/ServerTestHelper.js';
 import container from '../../container.js';
 import createServer from '../createServer.js';
@@ -140,6 +141,8 @@ describe('/threads endpoint', () => {
         date: '2021-08-08T07:59:48.766Z',
         isDelete: true,
       });
+      await CommentLikesTableTestHelper.addLike({ id: 'like-111', commentId: 'comment-111', owner: 'user-123' });
+      await CommentLikesTableTestHelper.addLike({ id: 'like-222', commentId: 'comment-111', owner: 'user-456' });
       const app = await createServer(container);
 
       // Action
@@ -174,6 +177,7 @@ describe('/threads endpoint', () => {
                 username: 'dicoding',
               },
             ],
+            likeCount: 2,
           },
           {
             id: 'comment-222',
@@ -181,6 +185,7 @@ describe('/threads endpoint', () => {
             date: '2021-08-08T07:26:21.338Z',
             content: '**komentar telah dihapus**',
             replies: [],
+            likeCount: 0,
           },
         ],
       });
