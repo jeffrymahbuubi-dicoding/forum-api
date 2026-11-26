@@ -137,13 +137,11 @@ proxy di depan aplikasi (port 5000), sehingga hanya port 80 dan 443 yang dibuka 
 
 - Limit access: resource `/threads` dan semua path di bawahnya dibatasi 90 permintaan per menit untuk setiap
   alamat IP. Zona pembatas dibuat dengan `limit_req_zone $binary_remote_addr zone=threads:10m rate=90r/m;`
-  dan dipasang pada `location /threads` dengan `limit_req`. Path lain tidak dibatasi.
-  - `rate=90r/m` berarti rata-rata 90 permintaan per menit, atau satu permintaan setiap sekitar 0,67 detik.
-  - `burst=89` menyediakan antrean 89 permintaan di atas satu permintaan yang sedang dilayani, sehingga
-    sekumpulan 90 permintaan yang datang berurutan tetap dilayani. Tanpa `burst`, permintaan kedua yang tiba
-    dalam jeda 0,67 detik langsung ditolak.
-  - `nodelay` membuat permintaan dalam batas `burst` dilayani saat itu juga, tidak ditahan agar sesuai
-    kecepatan `rate`. Permintaan di atas batas itu ditolak dengan status 503, lalu kuota terisi kembali
-    90 permintaan per menit.
+  dan dipasang pada `location /threads` dengan `limit_req zone=threads;`. Path lain tidak dibatasi.
+  - `rate=90r/m` berarti satu permintaan setiap sekitar 0,67 detik (60/90 detik) untuk satu alamat IP.
+  - Tidak ada kelonggaran tambahan: permintaan yang tiba sebelum jeda itu habis langsung ditolak dengan
+    status 503.
+  - Saat menjalankan Postman Collection terhadap server ini, beri jeda 1000 ms antar-request
+    (Collection Runner: "Add a delay of"; Newman: `--delay-request 1000`).
 - HTTPS: sertifikat diterbitkan oleh Let's Encrypt melalui certbot, dan permintaan HTTP dialihkan ke HTTPS
   sehingga lalu lintas tidak dapat disadap di jalan (serangan MITM).
